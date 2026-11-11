@@ -1,0 +1,181 @@
+# Defaults are placeholders and safe fallbacks. Environment-specific, non-secret settings
+# belong in your own values file (see deploy/values.example.yaml). Credentials never go in a
+# committed values file: use an existing Secret.
+
+fullnameOverride: ""
+# Overrides the app.kubernetes.io/name label (defaults to the chart name).
+nameOverride: ""
+
+images:
+  # Registry prefix for the three images built from this repository's Dockerfile.
+  registry: ""
+  pullPolicy: IfNotPresent
+  # Names of existing docker-registry Secrets in the release namespace.
+  pullSecrets: []
+  web:
+    repository: engineering-activity-web
+    tag: ""
+  collector:
+    repository: engineering-activity-collector
+    tag: ""
+  # Liquibase 4.33.0 with db/changelog copied to /liquibase/changelog.
+  migrations:
+    repository: engineering-activity-migrations
+    tag: ""
+
+secrets:
+  # Default: reference a Secret created outside Helm (kubectl create secret ...).
+  existingSecret: activity-secrets
+  # Development only: render a Secret from the values below. Never commit real values.
+  create: false
+  keys:
+    databasePassword: database-password
+    azureDevOpsPat: azure-devops-pat
+    dashboardUsername: dashboard-username
+    dashboardPassword: dashboard-password
+  values:
+    databasePassword: ""
+    azureDevOpsPat: ""
+    dashboardUsername: ""
+    dashboardPassword: ""
+
+database:
+  # Ignored when postgresql.enabled (the bundled service name is used).
+  host: ""
+  port: 5432
+  name: activity
+  user: activity
+  # disable | require | verify-ca | verify-full
+  sslmode: disable
+
+# Optional single-instance PostgreSQL. Disable to use an existing database server.
+postgresql:
+  enabled: true
+  image: postgres:17.9-bookworm
+  storage:
+    storageClassName: ""
+    size: 10Gi
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  nodeSelector: {}
+  tolerations: []
+
+azureDevOps:
+  # Required: the organization and project to collect, and at least one repository.
+  organization: ""
+  project: ""
+  repositories: []
+  workItemTypes: [Task]
+  # States that count as "completed". Matched case-insensitively and validated against the
+  # live work item workflow each run; the collector fails fast on a mismatch.
+  completionStates:
+    - ready for qa test build
+    - ready to test
+    - closed
+
+migrations:
+  # Liquibase context filter. Must exclude development seed changesets (@dev-seed);
+  # "live" matches no seed changeset. Never set dev-seed in a cluster.
+  contextFilter: live
+  # wait-for-schema init containers poll every 10s for this many attempts.
+  waitAttempts: 90
+  backoffLimit: 4
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 768Mi}
+  # The Liquibase image declares a named user (liquibase:liquibase); runAsNonRoot needs
+  # the numeric id to be explicit.
+  securityContext:
+    runAsUser: 1001
+    runAsGroup: 1001
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+web:
+  replicas: 1
+  # Header and footer text, plus an optional link (for example to your repository).
+  branding:
+    organization: ""   # default "Engineering"
+    team: ""           # default "Activity"
+    scope: ""          # default "Your repositories"
+    linkLabel: ""
+    linkUrl: ""
+  # Basic authentication from the Secret's dashboard-username/password keys. Disable only
+  # behind an ingress that already authenticates users.
+  auth:
+    enabled: true
+  service:
+    type: ClusterIP
+    port: 80
+  metrics:
+    port: 9090
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  nodeSelector: {}
+  tolerations: []
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {}
+  # Set secretName to terminate HTTPS with an existing TLS Secret.
+  tls:
+    enabled: false
+    secretName: ""
+
+collector:
+  # Hourly at :05 UTC; each run processes up to the start of the current UTC hour.
+  schedule: "5 * * * *"
+  timeZone: Etc/UTC
+  suspend: false
+  startingDeadlineSeconds: 1800
+  # Must exceed the collector's own --deadline (50m default for scheduled runs).
+  activeDeadlineSeconds: 3300
+  backoffLimit: 1
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  overlap: 2h
+  bootstrap: 168h
+  reconcileEvery: 24h
+  reconcileWindow: 168h
+  concurrency: 4
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 3Gi}
+  nodeSelector: {}
+  tolerations: []
+  # Bare Git mirror of each repository (a large monorepo can pack to 10+ GiB); kept across runs.
+  mirror:
+    existingClaim: ""
+    storageClassName: ""
+    size: 40Gi
+    accessModes: [ReadWriteOnce]
+    # Keep the PVC when the release is uninstalled (re-cloning takes a long time).
+    retain: true
+
+# One-off historical backfill Job (e.g. 24 months). Suspend the CronJob while it runs,
+# because both use the same ReadWriteOnce mirror volume. Bump `id` to run it again.
+backfill:
+  enabled: false
+  id: "1"
+  months: 24
+  activeDeadlineSeconds: 50400
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 4Gi}
+
+monitoring:
+  # prometheus.io/* annotations on the metrics Service, for annotation-based scraping.
+  annotations: true
+  serviceMonitor:
+    # Requires the Prometheus Operator CRDs (monitoring.coreos.com/v1).
+    enabled: false
+    interval: 60s
+    scrapeTimeout: 15s
+    labels: {}

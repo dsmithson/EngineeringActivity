@@ -1,0 +1,25 @@
+{{- if .Values.backfill.enabled }}
+# Historical backfill. It also performs the first full Git mirror fetch, which can exceed
+# the scheduled run deadline. Suspend the CronJob first (collector.suspend=true): both
+# mount the same mirror volume, and the collector's advisory lock rejects overlap anyway.
+# The collector's own --deadline stops ten minutes before the Job deadline so it can
+# record its outcome.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "activity.fullname" . }}-backfill-{{ .Values.backfill.id }}
+  labels:
+    {{- include "activity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backfill
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ .Values.backfill.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "activity.selector" . | nindent 8 }}
+        app.kubernetes.io/component: backfill
+    spec:
+      {{- $deadline := printf "%ds" (sub (int .Values.backfill.activeDeadlineSeconds) 600) }}
+      {{- include "activity.collectorPod" (dict "root" . "args" (list "--months" (toString .Values.backfill.months) "--deadline" $deadline) "resources" .Values.backfill.resources) | nindent 6 }}
+{{- end }}

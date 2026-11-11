@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+secrets/
+data/
+bin/
+*.log
+*.exe
+.cache/
+node_modules/
+dist/
+*.vsix
+playwright-report/
+test-results/

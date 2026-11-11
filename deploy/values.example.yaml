@@ -1,0 +1,67 @@
+# Example values for helm/engineering-activity. Copy it, change every <...> placeholder, and
+# keep your copy in your own deployment repository (for example an Argo CD values repo).
+#
+#   helm upgrade --install activity helm/engineering-activity -n activity --create-namespace \
+#     -f my-values.yaml
+#
+# Credentials never go in a values file: create the Secret first (see docs/deployment.md).
+
+images:
+  # Registry you pushed the three images to, and an optional pull Secret in the namespace.
+  registry: <registry.example.com/engineering>
+  pullSecrets: []
+  # One tag per release: the 12-character Git commit the images were built from. Bump together.
+  web:
+    tag: "<commit>"
+  collector:
+    tag: "<commit>"
+  migrations:
+    tag: "<commit>"
+
+secrets:
+  # Holds database-password, azure-devops-pat, dashboard-username, dashboard-password.
+  existingSecret: activity-secrets
+
+azureDevOps:
+  organization: <your-org>          # https://dev.azure.com/<your-org>
+  project: <YourProject>
+  repositories: [<RepoOne>, <RepoTwo>]
+  workItemTypes: [Task]
+  # Your workflow's "done" states. The collector checks them against the live workflow and
+  # stops with an error if one doesn't exist, so a typo can't silently count nothing.
+  completionStates:
+    - closed
+
+postgresql:
+  # Set enabled: false and fill database.host to use an existing PostgreSQL server instead.
+  enabled: true
+  storage:
+    storageClassName: <block-storage-class>   # prefer block storage for the database
+    size: 20Gi
+
+web:
+  branding:
+    organization: <Your Company>
+    team: Engineering
+    scope: <Main product or repository>
+    linkLabel: Open repository
+    linkUrl: https://dev.azure.com/<your-org>/<YourProject>/_git/<RepoOne>
+
+collector:
+  mirror:
+    # The bare Git mirror needs roughly 2x your largest repository's pack size during repacks.
+    storageClassName: <block-storage-class>
+    size: 40Gi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: activity.example.com
+  tls:
+    enabled: true
+    secretName: activity-tls
+
+monitoring:
+  # Requires the Prometheus Operator CRDs (kube-prometheus-stack).
+  serviceMonitor:
+    enabled: false

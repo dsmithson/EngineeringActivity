@@ -1,0 +1,62 @@
+# Liquibase migrations run as an ordinary Job (not a pre-install hook) so a first install
+# can wait for the bundled PostgreSQL StatefulSet created by the same release. The name
+# carries the release revision, so every install/upgrade applies the changelog packaged in
+# that revision's migrations image. Workloads gate on wait-for-schema init containers, and
+# Liquibase's DATABASECHANGELOGLOCK serializes any concurrent update.
+#
+# Argo CD renders with `helm template`, where .Release.Revision is always 1, so the Job name
+# never changes there. The Sync hook annotations make Argo delete and re-run it on every sync
+# instead (Helm ignores them). Liquibase update is idempotent, so extra runs are harmless.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "activity.fullname" . }}-migrate-r{{ .Release.Revision }}
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+  labels:
+    {{- include "activity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrations
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ .Values.migrations.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "activity.selector" . | nindent 8 }}
+        app.kubernetes.io/component: migrations
+    spec:
+      restartPolicy: OnFailure
+      {{- include "activity.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: wait-for-database
+          image: {{ include "activity.image" (dict "root" . "name" "migrations") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              for i in $(seq 1 60); do
+                if (exec 3<>/dev/tcp/{{ include "activity.dbHost" . }}/{{ .Values.database.port }}) 2>/dev/null; then exit 0; fi
+                echo "waiting for PostgreSQL ($i)"; sleep 5
+              done
+              echo "PostgreSQL not reachable" >&2; exit 1
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.migrations.securityContext | nindent 12 }}
+      containers:
+        - name: liquibase
+          image: {{ include "activity.image" (dict "root" . "name" "migrations") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args: ["update"]
+          env:
+            {{- include "activity.liquibaseEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.migrations.securityContext | nindent 12 }}

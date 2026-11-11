@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.33.xsd">
+    <include file="changes/001-app-metadata.sql" relativeToChangelogFile="true"/>
+    <include file="changes/002-core-facts.sql" relativeToChangelogFile="true"/>
+    <include file="changes/002b-identity-merges.sql" relativeToChangelogFile="true"/>
+    <include file="changes/003-reporting-views.sql" relativeToChangelogFile="true"/>
+    <include file="changes/004-dev-seed.sql" relativeToChangelogFile="true"/>
+    <include file="changes/005-work-areas.sql" relativeToChangelogFile="true"/>
+</databaseChangeLog>

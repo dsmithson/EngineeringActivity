@@ -1,0 +1,53 @@
+{{- if not .Values.collector.mirror.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "activity.fullname" . }}-git-mirror
+  labels:
+    {{- include "activity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: collector
+  {{- if .Values.collector.mirror.retain }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.collector.mirror.accessModes | nindent 4 }}
+  {{- with .Values.collector.mirror.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.collector.mirror.size }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "activity.fullname" . }}-collector
+  labels:
+    {{- include "activity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: collector
+spec:
+  schedule: {{ .Values.collector.schedule | quote }}
+  timeZone: {{ .Values.collector.timeZone | quote }}
+  suspend: {{ .Values.collector.suspend }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.collector.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.collector.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.collector.failedJobsHistoryLimit }}
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "activity.selector" . | nindent 8 }}
+        app.kubernetes.io/component: collector
+    spec:
+      backoffLimit: {{ .Values.collector.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.collector.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "activity.selector" . | nindent 12 }}
+            app.kubernetes.io/component: collector
+        spec:
+          {{- include "activity.collectorPod" (dict "root" . "args" (list "--mode" "scheduled") "resources" .Values.collector.resources) | nindent 10 }}

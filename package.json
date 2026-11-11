@@ -1,0 +1,15 @@
+{
+  "name": "engineering-activity-browser-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "node node_modules/@playwright/test/cli.js test",
+    "test:e2e:list": "node node_modules/@playwright/test/cli.js test --list",
+    "test:e2e:report": "node node_modules/@playwright/test/cli.js show-report",
+    "test:e2e:install": "node node_modules/@playwright/test/cli.js install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0"
+  }
+}

@@ -1,0 +1,10 @@
+Engineering activity {{ .Chart.AppVersion }} installed as {{ include "activity.fullname" . }} in {{ .Release.Namespace }}.
+
+Migrations: kubectl -n {{ .Release.Namespace }} logs job/{{ include "activity.fullname" . }}-migrate-r{{ .Release.Revision }}
+Collector:  kubectl -n {{ .Release.Namespace }} get cronjob {{ include "activity.fullname" . }}-collector
+Status:     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "activity.fullname" . }}-web 8080:{{ .Values.web.service.port }}   then GET /api/v1/status
+Metrics:    svc/{{ include "activity.fullname" . }}-metrics:{{ .Values.web.metrics.port }}/metrics (cluster-internal only)
+{{- if not .Values.backfill.enabled }}
+
+Only the 7-day bootstrap is collected automatically. For a 24-month backfill see docs/deployment.md.
+{{- end }}

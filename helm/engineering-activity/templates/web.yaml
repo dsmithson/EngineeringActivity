@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "activity.fullname" . }}-web
+  labels:
+    {{- include "activity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      {{- include "activity.selector" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        {{- include "activity.selector" . | nindent 8 }}
+        app.kubernetes.io/component: web
+    spec:
+      {{- include "activity.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.web.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- include "activity.waitForSchema" . | nindent 8 }}
+      containers:
+        - name: web
+          image: {{ include "activity.image" (dict "root" . "name" "web") }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args: ["serve"]
+          env:
+            {{- include "activity.dbEnv" . | nindent 12 }}
+            - name: LISTEN_ADDR
+              value: "0.0.0.0:8080"
+            - name: METRICS_ADDR
+              value: "0.0.0.0:{{ .Values.web.metrics.port }}"
+            {{- with .Values.web.branding }}
+            - name: BRAND_ORGANIZATION
+              value: {{ .organization | quote }}
+            - name: BRAND_TEAM
+              value: {{ .team | quote }}
+            - name: BRAND_SCOPE
+              value: {{ .scope | quote }}
+            - name: BRAND_LINK_LABEL
+              value: {{ .linkLabel | quote }}
+            - name: BRAND_LINK_URL
+              value: {{ .linkUrl | quote }}
+            {{- end }}
+            {{- if .Values.web.auth.enabled }}
+            - name: DASHBOARD_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "activity.secretName" . }}
+                  key: {{ .Values.secrets.keys.dashboardUsername }}
+            - name: DASHBOARD_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "activity.secretName" . }}
+                  key: {{ .Values.secrets.keys.dashboardPassword }}
+            {{- else }}
+            - name: ALLOW_UNAUTHENTICATED
+              value: "true"
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: {{ .Values.web.metrics.port }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "activity.fullname" . }}-web
+  labels:
+    {{- include "activity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  type: {{ .Values.web.service.type }}
+  selector:
+    {{- include "activity.selector" . | nindent 4 }}
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: {{ .Values.web.service.port }}
+      targetPort: http
+---
+# Separate, cluster-internal Service for Prometheus. Never referenced by the Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "activity.fullname" . }}-metrics
+  labels:
+    {{- include "activity.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+  {{- if .Values.monitoring.annotations }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ .Values.web.metrics.port | quote }}
+    prometheus.io/path: /metrics
+  {{- end }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "activity.selector" . | nindent 4 }}
+    app.kubernetes.io/component: web
+  ports:
+    - name: metrics
+      port: {{ .Values.web.metrics.port }}
+      targetPort: metrics

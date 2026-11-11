@@ -1,0 +1,12 @@
+# Local live-data stack (separate project and volume from the dev-seed stack).
+#   docker compose --env-file .env.live -f compose.yaml -f compose.live.yaml up -d --build web
+# PostgreSQL is published on host loopback so a natively run collector (whose Git mirror
+# lives on a roomy host disk) can write to it. See docs/local-development.md.
+name: activity-live
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55433}:5432"
+  liquibase:
+    environment:
+      LIQUIBASE_COMMAND_CONTEXT_FILTER: live

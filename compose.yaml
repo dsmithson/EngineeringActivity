@@ -1,0 +1,83 @@
+# Local development stack. Default: Liquibase applies the schema plus the explicit
+# dev-seed context, and the web app reads those fixtures from PostgreSQL.
+# For live data use compose.live.yaml (context `live`, separate project and volume).
+services:
+  postgres:
+    image: postgres:17.9-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-activity}
+      POSTGRES_USER: ${POSTGRES_USER:-activity}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+  liquibase:
+    image: liquibase:4.33.0
+    command: ["update"]
+    environment:
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-activity}
+      LIQUIBASE_COMMAND_USERNAME: ${POSTGRES_USER:-activity}
+      LIQUIBASE_COMMAND_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: db.changelog-master.xml
+      # dev-seed changesets are explicit-only (context:@dev-seed); any other value skips them.
+      LIQUIBASE_COMMAND_CONTEXT_FILTER: ${LIQUIBASE_CONTEXTS:-dev-seed}
+      LIQUIBASE_SEARCH_PATH: /liquibase/changelog
+      LIQUIBASE_ANALYTICS_ENABLED: "false"
+    volumes:
+      - ./db/changelog:/liquibase/changelog:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+  web:
+    build:
+      context: .
+      target: web
+    command: ["serve"]
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+      - "127.0.0.1:${METRICS_PORT:-9090}:9090"
+    environment:
+      LISTEN_ADDR: 0.0.0.0:8080
+      METRICS_ADDR: 0.0.0.0:9090
+      DATABASE_URL: postgres://${POSTGRES_USER:-activity}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-activity}?sslmode=disable
+      # Acceptable only because ports are published on host loopback. Use
+      # DASHBOARD_USERNAME/DASHBOARD_PASSWORD (and HTTPS ingress) anywhere shared.
+      ALLOW_UNAUTHENTICATED: "true"
+      # Header/footer text and link; see README "Configuration".
+      BRAND_ORGANIZATION: ${BRAND_ORGANIZATION:-}
+      BRAND_TEAM: ${BRAND_TEAM:-}
+      BRAND_SCOPE: ${BRAND_SCOPE:-}
+      BRAND_LINK_LABEL: ${BRAND_LINK_LABEL:-}
+      BRAND_LINK_URL: ${BRAND_LINK_URL:-}
+    depends_on:
+      liquibase:
+        condition: service_completed_successfully
+  # Optional containerized collector: docker compose --profile collector run --rm collector
+  # It refuses to write into a database that contains dev-seed fixtures.
+  collector:
+    profiles: ["collector"]
+    build:
+      context: .
+      target: collector
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-activity}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-activity}?sslmode=disable
+      AZURE_DEVOPS_ORG: ${AZURE_DEVOPS_ORG:-}
+      AZURE_DEVOPS_PROJECT: ${AZURE_DEVOPS_PROJECT:-}
+      AZURE_DEVOPS_REPOSITORIES: ${AZURE_DEVOPS_REPOSITORIES:-}
+      AZURE_DEVOPS_PAT: ${AZURE_DEVOPS_PAT:-}
+      AZURE_DEVOPS_BEARER_TOKEN: ${AZURE_DEVOPS_BEARER_TOKEN:-}
+    volumes:
+      - mirrors:/data
+    depends_on:
+      liquibase:
+        condition: service_completed_successfully
+    restart: "no"
+volumes:
+  postgres:
+  mirrors:
