@@ -35,6 +35,10 @@ test('uploaded report rolls numbered accounts into one person and reads the rang
   await expect(page.locator('#people-table tbody tr.person')).toHaveCount(2);
   await expect(page.locator('#people-table tbody tr.person').first().locator('td').nth(0)).toHaveText('Pat Example');
   await expect(page.locator('#people-table tbody tr.person').first().locator('td').nth(1)).toHaveText('2');
+  // Default view: output tokens, stacked by model.
+  await expect(page.locator('#people-title')).toHaveText('Output tokens by person');
+  await expect(page.locator('#people-chart .legend span')).toHaveText(['Opus 5.5 · 2K', 'Sonnet 5.5 · 500', 'Haiku 4.5 · 1K']);
+  await page.getByRole('button', { name: 'Both' }).click();
   await expect(page.locator('#people-chart .legend span')).toHaveText(['Opus 5.5 · 1M', 'Sonnet 5.5 · 200.5K', 'Haiku 4.5 · 501K']);
   await page.locator('#merge').uncheck();
   await expect(page.locator('#people-table tbody tr.person')).toHaveCount(3);
@@ -58,7 +62,7 @@ test('people picker hides individuals from every chart and the table, and All re
   await expect(page.locator('#people-summary')).toHaveText('1 of 2 people');
   await expect(page.locator('#people-table tbody tr.person')).toHaveCount(1);
   await expect(page.locator('#summary strong').first()).toHaveText('1');
-  await expect(page.locator('#people-chart .legend span')).toHaveText(['Opus 5.5 · 1M', 'Haiku 4.5 · 501K']);
+  await expect(page.locator('#people-chart .legend span')).toHaveText(['Opus 5.5 · 2K', 'Haiku 4.5 · 1K']);
   await page.getByRole('button', { name: 'All', exact: true }).click();
   await expect(page.locator('#people-table tbody tr.person')).toHaveCount(2);
   await page.keyboard.press('Escape');
@@ -74,9 +78,9 @@ test('table expands each person into per-model rows with the cost worked out, an
   await expect(pat.getByRole('button', { name: 'Pat Example' })).toHaveAttribute('aria-expanded', 'true');
   // Opus 5.5: 100K uncached × $4 + 100K 5-min writes × $5 + 800K reads × $0.20 = $1.06 input; 2K output × $20 = $0.04.
   await expect(models).toHaveCount(2);
-  await expect(models.nth(0).locator('td')).toHaveText(['Opus 5.5', '', '10', '1M', '2K', '80.0%', '$1.06', '$0.04', '$1.10', '66.7%']);
-  await expect(models.nth(1).locator('td').nth(9)).toHaveText('33.3%');
-  await expect(models.nth(0).locator('td').nth(8)).toHaveAttribute('title', /Cache read: 800,000 × \$0\.20 = \$0\.16/);
+  await expect(models.nth(0).locator('td')).toHaveText(['Opus 5.5', '', '10', '1M', '2K', '1M', '80.0%', '$1.06', '$0.04', '$1.10', '66.7%']);
+  await expect(models.nth(1).locator('td').nth(10)).toHaveText('33.3%');
+  await expect(models.nth(0).locator('td').nth(9)).toHaveAttribute('title', /Cache read: 800,000 × \$0\.20 = \$0\.16/);
   await expect(page.locator('#rates-table tbody tr')).toHaveCount(3);
   await expect(page.locator('#rates-table tbody tr').first().locator('td')).toHaveText(['Opus 5.5', '$4', '$5', '$8', '$0.20', '$20', 'claude-opus-5-5']);
   await expect(page.locator('#rates-note')).toBeHidden();
@@ -98,6 +102,21 @@ test('cache chart legend shows labels only and tooltips are one line per part', 
   await upload(page);
   await expect(page.locator('#cache-chart .legend span')).toHaveText(['Uncached input', 'Cache write · 5 min', 'Cache write · 1 h', 'Cache read']);
   const title = await page.locator('#people-chart svg title').first().textContent();
-  expect(title.split('\n')[0]).toBe('Pat Example: 1,503,000');
+  expect(title.split('\n')[0]).toBe('Pat Example: 3,000'); // default view is output tokens
   expect(title.split('\n').length).toBeGreaterThan(1);
+});
+
+test('token toggle switches the chart between output, input and both, and the table follows its order', async ({ page }) => {
+  await upload(page);
+  const toggle = page.getByRole('group', { name: 'Tokens to show' });
+  await expect(toggle.getByRole('button', { name: 'Output' })).toHaveAttribute('aria-pressed', 'true');
+  await toggle.getByRole('button', { name: 'Input' }).click();
+  await expect(page.locator('#people-title')).toHaveText('Input tokens by person');
+  await expect(page.locator('#people-chart .legend span')).toHaveText(['Opus 5.5 · 1M', 'Sonnet 5.5 · 200K', 'Haiku 4.5 · 500K']);
+  await expect(page.locator('#table-order')).toHaveText('input tokens');
+  await expect(page.locator('#people-table tbody tr.person').first().locator('td').nth(5)).toHaveText('1.5M');
+  // The toggle only applies to tokens; other measures hide it.
+  await page.selectOption('#measure', 'cost');
+  await expect(toggle).toBeHidden();
+  await expect(page.locator('#people-title')).toHaveText('Est. API cost by person');
 });

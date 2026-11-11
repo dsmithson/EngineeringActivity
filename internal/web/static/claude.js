@@ -45,6 +45,8 @@ const MEASURES = {
 };
 
 let report = null; // {rows, from, to, fileName}
+// Which tokens the chart shows when Measure is Tokens: output (default), input, or total (both).
+let tokenView = 'output';
 // People unchecked in the People picker, by person key (or account email when accounts aren't combined).
 // Remembered in this browser so a screenshot set-up survives reloading a newer report.
 const hidden = new Set((() => { try { return JSON.parse(localStorage.getItem('claude.hiddenPeople')) || []; } catch { return []; } })());
@@ -129,7 +131,7 @@ function people(rows) {
 
 // Series for the main chart, keyed by the stack choice; each returns per-row contributions.
 function stackSeries(rows) {
-  const stack = $('stack').value, measure = $('measure').value;
+  const stack = $('stack').value, measure = currentMeasure();
   if (stack === 'tokens') {
     return TOKEN_TYPES.filter(t => measure !== 'output' || t.key === 'output').filter(t => measure !== 'input' || t.key !== 'output')
       .map((t, i) => ({label: t.label, color: PALETTE[i], value: r => measure === 'cost' ? (costParts(r)?.[t.key] || 0) : r[t.key]}));
@@ -150,7 +152,7 @@ function barChart(holder, items, series, fmt, full, legendValue) {
   let svg;
   if (horizontal) {
     const row = 26, labelW = 104, left = labelW + 6, right = 10, top = 6, bottom = 20, height = top + bottom + row * items.length, pw = width - left - right;
-    svg = node('svg', {viewBox: `0 0 ${width} ${height}`, class: 'plot bars', role: 'img', 'aria-label': `${$('measure').selectedOptions[0].text} by person`});
+    svg = node('svg', {viewBox: `0 0 ${width} ${height}`, class: 'plot bars', role: 'img', 'aria-label': $('people-title').textContent});
     svg.style.height = height + 'px';
     for (let n = 0; n <= 3; n++) { const x = left + pw * n / 3; svg.append(node('line', {x1: x, y1: top, x2: x, y2: height - bottom, class: 'grid'}), node('text', {x, y: height - 6, 'text-anchor': n ? (n === 3 ? 'end' : 'middle') : 'start'}, fmt(max * n / 3))); }
     items.forEach((it, i) => {
@@ -161,7 +163,7 @@ function barChart(holder, items, series, fmt, full, legendValue) {
     });
   } else {
     const height = 300, left = 46, right = 8, top = 12, bottom = 54, pw = width - left - right, ph = height - top - bottom, step = pw / items.length, bw = Math.min(56, step * 0.68);
-    svg = node('svg', {viewBox: `0 0 ${width} ${height}`, class: 'plot bars', role: 'img', 'aria-label': `${$('measure').selectedOptions[0].text} by person`});
+    svg = node('svg', {viewBox: `0 0 ${width} ${height}`, class: 'plot bars', role: 'img', 'aria-label': $('people-title').textContent});
     svg.style.height = height + 'px';
     for (let n = 0; n <= 4; n++) { const y = top + ph - ph * n / 4; svg.append(node('line', {x1: left, y1: y, x2: width - right, y2: y, class: 'grid'}), node('text', {x: left - 6, y: y + 3, 'text-anchor': 'end'}, fmt(max * n / 4))); }
     items.forEach((it, i) => {
@@ -187,9 +189,12 @@ function rangeText() {
   return {eyebrow: `${title.toUpperCase()} · ${days} DAYS`, title, days};
 }
 
+// The measure the chart and row order use: Tokens resolves to the token toggle's choice.
+const currentMeasure = () => $('measure').value !== 'tokens' ? $('measure').value : tokenView === 'total' ? 'tokens' : tokenView;
+
 function render() {
   if (!report) return;
-  let rows = filtered(); const measure = $('measure').value, M = MEASURES[measure];
+  let rows = filtered(); const measure = currentMeasure(), M = MEASURES[measure];
   const r = rangeText();
   $('eyebrow').textContent = r.eyebrow; $('range-title').textContent = r.title; $('range-detail').textContent = `${report.fileName || 'Uploaded file'} · ${num(report.rows.length)} rows`;
   $('mode').textContent = 'LOCAL FILE · NOT STORED'; $('mode').className = 'pill demo';
@@ -215,6 +220,9 @@ function render() {
 
   const stackWord = {model: 'model', product: 'product', tokens: 'token type'}[$('stack').value];
   $('people-title').textContent = `${M.label} by person`;
+  $('token-view').hidden = $('measure').value !== 'tokens';
+  for (const b of $('token-view').querySelectorAll('button')) b.setAttribute('aria-pressed', b.dataset.view === tokenView);
+  $('table-order').textContent = M.label.toLowerCase();
   $('people-sub').textContent = `Stacked by ${stackWord} · ${$('product').value || 'all products'} · ${r.days ? `${r.days}-day report` : 'whole report'}`;
   barChart($('people-chart'), ppl, stackSeries(rows), M.fmt, M.full);
 
@@ -254,12 +262,12 @@ function renderTable(ppl) {
     toggle.addEventListener('click', () => { expanded.has(p.key) ? expanded.delete(p.key) : expanded.add(p.key); render(); });
     first.append(toggle); tr.append(first);
     const accts = [...new Set(p.rows.map(x => x.email))]; if (accts.length > 1) first.title = accts.join('\n');
-    cell(tr, num(p.accounts), 'n'); cell(tr, num(s(m => m.requests)), 'n'); cell(tr, compact(s(m => m.input)), 'n'); cell(tr, compact(s(m => m.output)), 'n'); cell(tr, hit(s(m => m.read), s(m => m.input)), 'n');
+    cell(tr, num(p.accounts), 'n'); cell(tr, num(s(m => m.requests)), 'n'); cell(tr, compact(s(m => m.input)), 'n'); cell(tr, compact(s(m => m.output)), 'n'); cell(tr, compact(tokens), 'n'); cell(tr, hit(s(m => m.read), s(m => m.input)), 'n');
     cell(tr, usd(s(m => m.inCost)), 'n'); cell(tr, usd(s(m => m.outCost)), 'n'); cell(tr, usd(s(m => m.inCost + m.outCost)), 'n total'); cell(tr, `${models.length} model${models.length === 1 ? '' : 's'}`, 'n muted');
     tbody.append(tr);
     for (const m of models) {
       const sub = document.createElement('tr'), work = costWork(m); sub.className = 'model'; sub.hidden = !open;
-      cell(sub, modelLabel(m.model)); cell(sub, ''); cell(sub, num(m.requests), 'n'); cell(sub, compact(m.input), 'n', num(m.input)); cell(sub, compact(m.output), 'n', num(m.output)); cell(sub, hit(m.read, m.input), 'n');
+      cell(sub, modelLabel(m.model)); cell(sub, ''); cell(sub, num(m.requests), 'n'); cell(sub, compact(m.input), 'n', num(m.input)); cell(sub, compact(m.output), 'n', num(m.output)); cell(sub, compact(m.input + m.output), 'n', num(m.input + m.output)); cell(sub, hit(m.read, m.input), 'n');
       cell(sub, m.priced ? usd(m.inCost) : '—', 'n', work); cell(sub, m.priced ? usd(m.outCost) : '—', 'n', work); cell(sub, m.priced ? usd(m.inCost + m.outCost) : 'not priced', 'n', work);
       cell(sub, tokens ? ((m.input + m.output) / tokens * 100).toFixed(1) + '%' : '—', 'n');
       tbody.append(sub);
@@ -318,6 +326,7 @@ drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add(
 drop.addEventListener('dragleave', () => drop.classList.remove('over'));
 drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); open(e.dataTransfer.files[0]); });
 for (const id of ['measure', 'stack', 'product', 'merge']) $(id).addEventListener('change', render);
+for (const b of $('token-view').querySelectorAll('button')) b.addEventListener('click', () => { tokenView = b.dataset.view; render(); });
 $('download').addEventListener('click', download);
 $('expand-all').addEventListener('click', () => {
   const ppl = people(filtered()).filter(p => !hidden.has(p.key)), all = ppl.every(p => expanded.has(p.key));
