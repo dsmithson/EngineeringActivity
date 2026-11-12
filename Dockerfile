@@ -4,8 +4,10 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -mod=readonly -trimpath -buildvcs=false -o /out/dashboard ./cmd/dashboard \
- && CGO_ENABLED=0 go build -mod=readonly -trimpath -buildvcs=false -o /out/collector ./cmd/collector
+# Release builds pass the semantic version (see .github/workflows/release.yml); local builds say "dev".
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -mod=readonly -trimpath -buildvcs=false -ldflags "-X main.version=${VERSION}" -o /out/dashboard ./cmd/dashboard \
+ && CGO_ENABLED=0 go build -mod=readonly -trimpath -buildvcs=false -ldflags "-X main.version=${VERSION}" -o /out/collector ./cmd/collector
 
 # Liquibase is the only schema owner. The changelog is baked in for Kubernetes Jobs;
 # Compose mounts ./db/changelog over it for development.

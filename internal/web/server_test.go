@@ -255,6 +255,11 @@ func TestBrandingConfig(t *testing.T) {
 		}
 		return got
 	}
+	s := newServer(&fakeReader{})
+	s.Version = "1.2.3"
+	if w := do(s.Handler(), "/api/v1/config"); !strings.Contains(w.Body.String(), `"version":"1.2.3"`) {
+		t.Errorf("config missing version: %s", w.Body.String())
+	}
 	if got := read(Branding{}); got != DefaultBranding {
 		t.Errorf("defaults = %+v, want %+v", got, DefaultBranding)
 	}

@@ -50,4 +50,6 @@ deploys it. See [README.md](README.md) for the tour and [docs/](docs) for depth.
 - **Charts:** colors come from the validated categorical palette already in the code; keep
   per-series colors fixed by entity, not rank.
 - **Commits:** small and focused; run `go vet ./... && go test ./...` and the relevant
-  Playwright suite before committing.
+  Playwright suite before committing. CI (`.github/workflows/ci.yml`) runs everything on each PR.
+- **Versions:** semantic versioning; `VERSION`, `Chart.yaml` and the `vX.Y.Z` tag must agree.
+  Images are built only by `.github/workflows/release.yml`; see `docs/releasing.md`.

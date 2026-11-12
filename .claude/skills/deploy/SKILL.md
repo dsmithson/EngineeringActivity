@@ -19,17 +19,18 @@ Full reference: `docs/deployment.md`. This skill is the checklist.
 
 ## Release
 
-```bash
-tag=$(git rev-parse --short=12 HEAD)        # one tag per commit; never latest
-for t in web collector migrations; do
-  docker build --platform linux/amd64 --target $t -t "$REG/<repo-prefix>-$t:$tag" . && docker push "$REG/<repo-prefix>-$t:$tag"
-done
-```
+Images are built by GitHub Actions, not by hand (see `docs/releasing.md`):
 
-- **Argo CD:** set the three `images.*.tag` values in the GitOps values file to `$tag`, commit,
+1. Bump `VERSION` and `Chart.yaml` (`version`, `appVersion`) in a PR; merge once CI is green.
+2. Tag the merge commit `vX.Y.Z` and push the tag. The **Release images** workflow publishes
+   `ghcr.io/dsmithson/engineering-activity-{web,collector,migrations}:X.Y.Z` and a GitHub release.
+3. Wait for that workflow to succeed (`gh run watch`) before changing any deployment.
+
+- **Argo CD:** set the three `images.*.tag` values to `X.Y.Z` (and the Application's chart
+  `targetRevision` to `vX.Y.Z`) in the GitOps repository, commit,
   push (on a branch with a PR if the user asks), then watch the Application sync. The migration Job
   is an Argo `Sync` hook and re-runs on every sync.
-- **Helm by hand:** `helm upgrade activity helm/engineering-activity -n <ns> -f <values> --set-string images.web.tag=$tag,images.collector.tag=$tag,images.migrations.tag=$tag --wait`.
+- **Helm by hand:** `helm upgrade activity helm/engineering-activity -n <ns> -f <values> --set-string images.web.tag=X.Y.Z,images.collector.tag=X.Y.Z,images.migrations.tag=X.Y.Z --wait`.
 
 Validate first without a cluster: `helm lint` and `helm template` with the same values.
 

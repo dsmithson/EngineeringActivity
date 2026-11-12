@@ -46,22 +46,34 @@ Point the Application at `helm/engineering-activity` in this repository (a pinne
 installed by hand, set `helm.releaseName` to the existing release name, and keep `fullnameOverride`
 and `nameOverride` matching what is running: Deployment and StatefulSet selectors are immutable.
 
-## 1. Build and push images
+## 1. Choose images
 
-From the repository root, tag every image with the commit. Never use `latest`:
+Each [release](https://github.com/dsmithson/EngineeringActivity/releases) publishes three public
+`linux/amd64` images to GitHub Container Registry:
+
+```yaml
+images:
+  registry: ghcr.io/dsmithson
+  web:        {tag: "0.4.0"}   # engineering-activity-web
+  collector:  {tag: "0.4.0"}   # engineering-activity-collector
+  migrations: {tag: "0.4.0"}   # engineering-activity-migrations
+```
+
+Pin one exact version for all three; never `latest` or `main`. The chart refuses to render
+without explicit tags. On a mixed-architecture cluster, add a `kubernetes.io/arch: amd64` node
+selector to `web`, `collector` and `postgresql`.
+
+To build your own instead (for example into a private registry), pass the version so the app can
+report it:
 
 ```bash
-tag=$(git rev-parse --short=12 HEAD)
-reg=registry.example.com/engineering
+v=$(cat VERSION)
 for target in web collector migrations; do
-  docker build --platform linux/amd64 --target $target -t "$reg/engineering-activity-$target:$tag" .
-  docker push "$reg/engineering-activity-$target:$tag"
+  docker build --platform linux/amd64 --target $target --build-arg VERSION=$v     -t "registry.example.com/engineering/engineering-activity-$target:$v" .
 done
 ```
 
-Set `images.registry` and the three `images.*.tag` values. The chart refuses to render without
-explicit tags. Images are amd64; on a mixed-architecture cluster add a
-`kubernetes.io/arch: amd64` node selector to `web`, `collector` and `postgresql`.
+How releases are cut: [releasing](releasing.md).
 
 ## 2. Namespace and Secrets
 
@@ -227,7 +239,7 @@ that user's password.
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `images.registry`, `images.*.repository/tag`, `images.pullSecrets` | none / required tags | Images built from this repo |
+| `images.registry`, `images.*.repository/tag`, `images.pullSecrets` | none / required tags | `ghcr.io/dsmithson` and a release version, or your own registry |
 | `secrets.existingSecret`, `secrets.keys.*` | `activity-secrets` | Secret name and key names |
 | `azureDevOps.organization/project/repositories` | required | Collection scope |
 | `azureDevOps.workItemTypes/completionStates` | `[Task]` / QA build, ready to test, closed | What counts as a completed task |
