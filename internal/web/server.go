@@ -43,6 +43,7 @@ type Server struct {
 	Requests           *RequestMetrics
 	Now                func() time.Time
 	Branding           Branding
+	Version            string
 }
 
 // Branding is the display text and outbound link shown in the page header. It is
@@ -108,7 +109,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/status", s.status)
 	mux.HandleFunc("GET /api/v1/groups", s.groups)
 	mux.HandleFunc("GET /api/v1/repositories", s.repositories)
-	mux.HandleFunc("GET /api/v1/config", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.Branding.withDefaults()) })
+	mux.HandleFunc("GET /api/v1/config", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct {
+			Branding
+			Version string `json:"version"`
+		}{s.Branding.withDefaults(), s.Version})
+	})
 	sub, _ := fs.Sub(assets, "static")
 	mux.Handle("GET /", http.FileServer(http.FS(sub)))
 	return s.Requests.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

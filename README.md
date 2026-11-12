@@ -1,5 +1,9 @@
 # Engineering Activity
 
+[![CI](https://github.com/dsmithson/EngineeringActivity/actions/workflows/ci.yml/badge.svg)](https://github.com/dsmithson/EngineeringActivity/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/dsmithson/EngineeringActivity?sort=semver)](https://github.com/dsmithson/EngineeringActivity/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **See how your team actually builds software: every pull request, commit and task, hour by hour,
 across every branch. Then see exactly what Claude is costing you, person by person.**
 
@@ -115,8 +119,10 @@ Full definitions: [architecture](docs/architecture.md) and the [reporting contra
 You need a Kubernetes cluster (1.27+), a container registry, and an Azure DevOps PAT with
 **Code: Read** and **Work Items: Read**.
 
-1. **Build and push the three images** (`web`, `collector`, `migrations`) from the `Dockerfile`,
-   tagged with the commit. Never use `latest`.
+1. **Pick a release.** Prebuilt images are published for every
+   [release](https://github.com/dsmithson/EngineeringActivity/releases) to
+   `ghcr.io/dsmithson/engineering-activity-{web,collector,migrations}:<version>`. Pin an exact
+   version, never `latest`. (Or build your own from the `Dockerfile`.)
 2. **Create the Secret** with the database password, PAT and dashboard login (see
    [deployment](docs/deployment.md)).
 3. **Write your values file.** Start from [`deploy/values.example.yaml`](deploy/values.example.yaml):
@@ -166,7 +172,8 @@ go vet ./... && go test ./...                     # TEST_DATABASE_URL enables Po
 ```
 
 More: [local development](docs/local-development.md), [browser tests](docs/browser-tests.md),
-[refreshing the README screenshots](docs/screenshots.md).
+[releasing and CI](docs/releasing.md), [refreshing the README screenshots](docs/screenshots.md).
+Every pull request runs unit, PostgreSQL integration, Helm and full browser acceptance tests.
 
 **Working with an AI agent?** Start with [`CLAUDE.md`](CLAUDE.md). The skills in
 [`.claude/skills/`](.claude/skills) cover running the app, deploying it, and building reports

@@ -16,6 +16,9 @@ import (
 	_ "time/tzdata" // zone rules for range alignment without relying on the host OS
 )
 
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
+
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -74,7 +77,7 @@ func run() error {
 	if err := validateDemoBind(addr, demo, user, allowAnonymous); err != nil {
 		return err
 	}
-	app := &web.Server{Demo: demo, Username: user, Password: password, Log: log, Branding: web.Branding{
+	app := &web.Server{Demo: demo, Username: user, Password: password, Log: log, Version: version, Branding: web.Branding{
 		Organization: os.Getenv("BRAND_ORGANIZATION"),
 		Team:         os.Getenv("BRAND_TEAM"),
 		Scope:        os.Getenv("BRAND_SCOPE"),
@@ -96,7 +99,7 @@ func run() error {
 		}()
 		log.Info("metrics listening", "addr", metricsAddr)
 	}
-	log.Info("dashboard listening", "addr", addr, "demo", demo)
+	log.Info("dashboard listening", "addr", addr, "demo", demo, "version", version)
 	return serve(ctx, server)
 }
 

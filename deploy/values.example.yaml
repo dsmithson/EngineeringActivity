@@ -7,16 +7,17 @@
 # Credentials never go in a values file: create the Secret first (see docs/deployment.md).
 
 images:
-  # Registry you pushed the three images to, and an optional pull Secret in the namespace.
-  registry: <registry.example.com/engineering>
+  # Published releases (public, no pull secret needed). To use your own registry instead, set
+  # registry and the three repository names, plus pullSecrets if it is private.
+  registry: ghcr.io/dsmithson
   pullSecrets: []
-  # One tag per release: the 12-character Git commit the images were built from. Bump together.
+  # Pin one release version for all three (see GitHub releases). Never "latest" or "main".
   web:
-    tag: "<commit>"
+    tag: "0.4.0"
   collector:
-    tag: "<commit>"
+    tag: "0.4.0"
   migrations:
-    tag: "<commit>"
+    tag: "0.4.0"
 
 secrets:
   # Holds database-password, azure-devops-pat, dashboard-username, dashboard-password.

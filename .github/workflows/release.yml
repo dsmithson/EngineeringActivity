@@ -1,0 +1,99 @@
+# Builds and publishes the three images to GitHub Container Registry.
+#
+#   push to main  -> ghcr.io/<owner>/engineering-activity-<target>:main and :sha-<12 chars>
+#   tag vX.Y.Z    -> :X.Y.Z, :X.Y, and :latest (plus :sha-<12 chars>), and a GitHub release
+#
+# Deploy pinned versions (X.Y.Z), never :main or :latest. See docs/releasing.md.
+name: Release images
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write     # create the GitHub release on tags
+  packages: write     # push to ghcr.io
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-version:
+    name: Tag matches VERSION
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          tag="${GITHUB_REF_NAME#v}"
+          [ "$tag" = "$(cat VERSION)" ] || { echo "Tag v$tag does not match VERSION $(cat VERSION)"; exit 1; }
+          grep -q "^version: $tag$" helm/engineering-activity/Chart.yaml || { echo "Chart.yaml version is not $tag"; exit 1; }
+
+  images:
+    name: Build ${{ matrix.target }}
+    needs: [verify-version]
+    if: always() && (needs.verify-version.result == 'success' || needs.verify-version.result == 'skipped')
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [web, collector, migrations]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/engineering-activity-${{ matrix.target }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=ref,event=branch
+            type=sha,format=short,prefix=sha-,length=12
+          labels: |
+            org.opencontainers.image.title=engineering-activity-${{ matrix.target }}
+            org.opencontainers.image.licenses=MIT
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+  github-release:
+    name: GitHub release
+    needs: [images]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          owner="${{ github.repository_owner }}"
+          cat > notes.md <<EOF
+          Images (linux/amd64):
+
+          - \`ghcr.io/${owner}/engineering-activity-web:${v}\`
+          - \`ghcr.io/${owner}/engineering-activity-collector:${v}\`
+          - \`ghcr.io/${owner}/engineering-activity-migrations:${v}\`
+
+          Helm: set \`images.registry: ghcr.io/${owner}\` and all three \`images.*.tag\` to \`${v}\`.
+          EOF
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --notes-file notes.md --verify-tag

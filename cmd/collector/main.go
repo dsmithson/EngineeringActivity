@@ -27,8 +27,11 @@ import (
 
 const defaultCompletionStates = "ready for qa test build,ready to test,closed"
 
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})).With("service", "collector")
+	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})).With("service", "collector", "version", version)
 	if err := run(os.Args[1:], log); err != nil {
 		log.Error("collector exited with error", "error_class", collector.Classify(err), "detail", safeDetail(err))
 		os.Exit(1)

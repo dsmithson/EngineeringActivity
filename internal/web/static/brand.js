@@ -8,5 +8,6 @@ fetch('/api/v1/config').then(r => r.ok ? r.json() : null).then(b => {
   for (const a of document.querySelectorAll('[data-brand="link"]')) {
     if (b.linkUrl) { a.href = b.linkUrl; a.textContent = b.linkLabel + ' ↗'; a.hidden = false; }
   }
+  if (b.version) for (const el of document.querySelectorAll('[data-brand="version"]')) el.textContent = `v${b.version.replace(/^v/, '')}`;
   document.title = `${b.organization} · ${document.title}`;
 }).catch(() => {});
