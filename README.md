@@ -180,3 +180,7 @@ from the data.
 - Activity credited to a person does not distinguish their own work from agents using their account.
 - The Claude cost is an estimate at public API list prices, not your invoice; Team plans export
   $0 spend for seat usage.
+
+## License
+
+[MIT](LICENSE): use it, change it, ship it, sell it. Just keep the copyright notice.
