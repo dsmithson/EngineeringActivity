@@ -94,6 +94,25 @@ func (s *Store) UpsertRepository(ctx context.Context, r facts.Repository) error 
 	return err
 }
 
+// RepositoryID returns the ID of a repository already collected under this organization,
+// project and name, or "" if it has never been seen.
+func (s *Store) RepositoryID(ctx context.Context, organization, project, name string) (string, error) {
+	var id string
+	err := s.Pool.QueryRow(ctx, `SELECT repository_id::text FROM repositories WHERE organization = $1 AND project = $2 AND name = $3`,
+		organization, project, name).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+
+// ForgetScope removes checkpoints recorded under a scope that is no longer used, such as a
+// repository name recorded before its ID was known.
+func (s *Store) ForgetScope(ctx context.Context, scope string) error {
+	_, err := s.Pool.Exec(ctx, `DELETE FROM sync_checkpoints WHERE scope = $1`, scope)
+	return err
+}
+
 // upsertIdentities records Azure identities and learns their email aliases. Manual aliases
 // always win over learned ones.
 func upsertIdentities(ctx context.Context, tx pgx.Tx, ids []facts.Identity) error {

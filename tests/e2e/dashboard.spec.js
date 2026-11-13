@@ -294,3 +294,19 @@ test('filters stay pinned while charts scroll on wide screens only', async ({ pa
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('collection status lists one source per line and flags a failed source', async ({ page }) => {
+  const data = await openDashboard(page);
+  test.skip(data.demo, 'The in-memory demo has no collection sources');
+  const status = page.getByRole('status');
+  await expect(status.locator('.status-head')).toHaveText(/^Collection healthy/);
+  await expect(status.locator('div', { hasText: /^(Commits|Pull requests|Tasks) \(/ })).toHaveCount(data.sources.length);
+  // Simulate one failed source: the headline and only that line turn into warnings.
+  const broken = structuredClone(data);
+  broken.sources[0] = { ...broken.sources[0], outcome: 'failed', errorClass: 'network' };
+  await page.route(activityRoute, route => route.fulfill({ json: broken }));
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(status.locator('.status-head')).toHaveText(/^Collection needs attention/);
+  await expect(status.locator('div.error', { hasText: 'last attempt failed (network)' })).toHaveCount(1);
+  await expect(status.locator('div.error', { hasText: /synced/ })).toHaveCount(0);
+});
