@@ -313,9 +313,19 @@ func (c *Collector) collectRepository(ctx context.Context, log *slog.Logger, run
 		mirror = c.Mirrors(repo)
 		err = mirror.Fetch(ctx)
 	}
-	scope := name
-	if repo.ID != "" {
-		scope = repo.ID
+	// Checkpoints are keyed by repository ID. If Azure DevOps couldn't be reached to look the
+	// repository up, use the ID from an earlier run so the failure lands on the same checkpoint;
+	// only a never-seen repository falls back to its name.
+	scope := repo.ID
+	if scope == "" {
+		if known, kerr := c.Store.RepositoryID(ctx, c.Config.Organization, c.Config.Project, name); kerr == nil && known != "" {
+			scope = known
+		} else {
+			scope = name
+		}
+	} else if ferr := c.Store.ForgetScope(ctx, name); ferr != nil {
+		// A stale name-keyed checkpoint only affects the status display; keep collecting.
+		log.Warn("clearing name-keyed checkpoint failed", "repository", name, "error_class", Classify(ferr))
 	}
 	results := []sourceResult{}
 	for _, source := range []string{SourceCommits, SourcePullRequests} {

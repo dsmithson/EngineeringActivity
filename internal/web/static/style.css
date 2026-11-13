@@ -21,3 +21,4 @@ tr.person td{background:#132035;border-bottom-color:#26374e}tr.model td{color:#b
 th small{display:block;font-weight:400;font-size:10px;color:#71859f;margin-top:2px}
 .chart-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}.chart-head p{margin-bottom:18px}
 .seg{display:inline-flex;border:1px solid #344761;border-radius:6px;overflow:hidden}.seg[hidden]{display:none}.seg button{border:0;border-radius:0;padding:6px 14px;font-size:12px;background:#172338;color:#95aac4}.seg button+button{border-left:1px solid #344761}.seg button[aria-pressed=true]{background:#132a2a;color:#6be1be}.seg button:hover{color:#e1eaf6}
+#status .status-head{color:#b8c9df}#status .error,#status.error{color:#f7bb84}

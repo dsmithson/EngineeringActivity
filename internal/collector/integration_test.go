@@ -53,10 +53,16 @@ type fakeADO struct {
 	revisions map[int][]facts.Revision
 	prs       []facts.PullRequest
 	failTasks error
+	failRepo  error
 	prQueries []ado.PRQuery
 }
 
-func (f *fakeADO) Repository(context.Context, string) (facts.Repository, error) { return f.repo, nil }
+func (f *fakeADO) Repository(context.Context, string) (facts.Repository, error) {
+	if f.failRepo != nil {
+		return facts.Repository{}, f.failRepo
+	}
+	return f.repo, nil
+}
 func (f *fakeADO) WorkItemTypeStates(context.Context, string) ([]string, error) {
 	return f.states, f.failTasks
 }
@@ -284,6 +290,34 @@ func TestCollectorEndToEnd(t *testing.T) {
 	}
 	fake.failTasks = nil
 
+	// Azure DevOps unreachable before the repository lookup: the failure is recorded on the
+	// repository's ID checkpoint (known from earlier runs), never under its name, and the
+	// next successful run clears it. A stray name-keyed row from older versions is removed.
+	if _, err := db.Pool.Exec(ctx, `INSERT INTO sync_checkpoints (source, scope, last_attempt_at, last_outcome, last_error_class)
+		VALUES ('commits', 'Widgets', now(), 'failed', 'network')`); err != nil {
+		t.Fatal(err)
+	}
+	fake.failRepo = errors.New("dial tcp: connection refused")
+	if err := c.Run(ctx, Request{Mode: ModeScheduled}); err == nil {
+		t.Fatal("expected failure while ADO is unreachable")
+	}
+	if n := count(t, db, `SELECT count(*) FROM sync_checkpoints WHERE scope = $1 AND source IN ('commits', 'pull_requests') AND last_outcome = 'failed'`, fake.repo.ID); n != 2 {
+		t.Fatalf("lookup failure should mark both ID checkpoints failed, got %d", n)
+	}
+	if n := count(t, db, `SELECT count(*) FROM sync_checkpoints WHERE scope = 'Widgets' AND source = 'pull_requests'`); n != 0 {
+		t.Fatal("lookup failure created a name-keyed checkpoint")
+	}
+	fake.failRepo = nil
+	if err := c.Run(ctx, Request{Mode: ModeScheduled}); err != nil {
+		t.Fatalf("recovery run: %v", err)
+	}
+	if n := count(t, db, `SELECT count(*) FROM sync_checkpoints WHERE scope = 'Widgets'`); n != 0 {
+		t.Fatal("name-keyed checkpoint not cleared after a successful lookup")
+	}
+	if n := count(t, db, `SELECT count(*) FROM sync_checkpoints WHERE last_outcome = 'success' AND watermark = $1`, hour); n != 3 {
+		t.Fatalf("after recovery, checkpoints at current hour = %d", n)
+	}
+
 	// Read side: gap-free hourly series and contributor filtering.
 	q := store.ActivityQuery{From: hour.Add(-167 * time.Hour), To: hour.Add(time.Hour), Unit: "hour", TimeZone: "UTC"}
 	buckets, err := db.Activity(ctx, q)
@@ -379,7 +413,8 @@ func TestCollectorEndToEnd(t *testing.T) {
 	}
 
 	snap, err := db.Metrics(ctx)
-	if err != nil || len(snap.Sources) != 3 || snap.Runs["success"] < 3 || snap.Runs["partial"] != 1 {
+	// Two partial runs: the failing task source, and the repository lookup failure.
+	if err != nil || len(snap.Sources) != 3 || snap.Runs["success"] < 3 || snap.Runs["partial"] != 2 {
 		t.Fatalf("metrics %+v %v", snap, err)
 	}
 

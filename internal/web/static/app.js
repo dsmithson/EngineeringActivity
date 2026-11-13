@@ -127,6 +127,24 @@ function fillWho(identities){
 function saveState(){
  try{const p=new URLSearchParams(location.search);p.set('range',$('range').value);$('user').value?p.set('who',$('user').value):p.delete('who');if(visibleAreas)p.set('areas',[...visibleAreas].join(','));history.replaceState(null,'','?'+p.toString())}catch{}
 }
+// Collection status: a one-line headline, then one line per source (stale or failed ones flagged).
+function showStatus(data){
+ const box=$('status');box.replaceChildren();box.className='';
+ const line=(text,cls)=>{const el=document.createElement('div');el.textContent=text;if(cls)el.className=cls;box.append(el)};
+ if(data.demo){line('Preview only — deterministic sample activity, not Azure DevOps data.'+($('range').value!=='7d'?' Longer ranges need the database.':''));return}
+ const names={commits:'Commits',pull_requests:'Pull requests',tasks:'Tasks'},sources=data.sources||[],clock=at=>date(at,{hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const missing=Object.keys(names).filter(n=>!sources.some(s=>s.source===n));
+ const bad=s=>s.outcome==='failed'||!s.lastSuccess||Date.now()-new Date(s.lastSuccess)>2*60*60*1000;
+ const issue=missing.length>0||sources.some(bad);
+ if(data.dataset==='fixture')line('Development fixture data from PostgreSQL — deterministic sample activity, not Azure DevOps data.');
+ line(issue?'Collection needs attention — data may be incomplete or stale.':'Collection healthy — all sources synced within the last 2 hours.',issue?'status-head error':'status-head');
+ for(const s of sources){
+  const what=`${names[s.source]||s.source} (${s.scopeName||s.scope})`;
+  const state=s.outcome==='failed'?`last attempt failed (${s.errorClass||'error'})${s.lastSuccess?` · last success ${clock(s.lastSuccess)}`:''}`:s.lastSuccess?`synced ${clock(s.lastSuccess)}`:'awaiting first sync';
+  line(`${what}: ${state}`,bad(s)?'error':'');
+ }
+ for(const n of missing)line(`${names[n]}: awaiting collection`,'error');
+}
 async function refresh(){
  const number=++requestNumber;activeController?.abort();activeController=new AbortController();$('refresh').disabled=true;saveState();
  const who=$('user').value,q=new URLSearchParams({range:$('range').value,tz:$('timezone').value,user:who.startsWith('group:')?'':who});if(who.startsWith('group:'))q.set('group',who.slice(6));
@@ -134,12 +152,7 @@ async function refresh(){
   const groupsRequest=fetch('/api/v1/groups',{signal:activeController.signal}).then(r=>r.ok?r.json():{groups:[]}).catch(e=>{if(e.name==='AbortError')throw e;return {groups:[]}});
   const res=await fetch('/api/v1/activity?'+q.toString(),{signal:activeController.signal});if(!res.ok)throw Error(`Activity unavailable (HTTP ${res.status})`);const data=await res.json();groups=(await groupsRequest).groups||[];if(number!==requestNumber)return;latest=data;
   fillWho(data.identities||[]);
-  let message,issue=false;
-  if(data.demo)message='Preview only — deterministic sample activity, not Azure DevOps data.'+($('range').value!=='7d'?' Longer ranges need the database.':'');
-  else{const sources=data.sources||[],names={commits:'Commits',pull_requests:'Pull requests',tasks:'Tasks'},missing=Object.keys(names).filter(name=>!sources.some(s=>s.source===name)),stale=s=>s.outcome==='failed'||!s.lastSuccess||Date.now()-new Date(s.lastSuccess)>2*60*60*1000;issue=missing.length>0||sources.some(stale);
-   message=(data.dataset==='fixture'?'Development fixture data from PostgreSQL — deterministic sample activity, not Azure DevOps data. ':'')+sources.map(s=>`${names[s.source]||s.source} (${s.scopeName||s.scope}): ${s.outcome==='failed'?`last attempt failed (${s.errorClass||'error'})`:s.lastSuccess?'synced '+date(s.lastSuccess,{hour:'2-digit',minute:'2-digit',hourCycle:'h23'}):'awaiting first sync'}`).join(' · ');
-   if(missing.length)message+=' · Awaiting collection: '+missing.map(n=>names[n]).join(', ');if(issue)message+=' · Data may be incomplete or stale.';}
-  $('status').textContent=message;$('status').className=issue?'error':'';render();
+  showStatus(data);render();
  }catch(e){if(e.name!=='AbortError'){$('status').textContent=e.message+(latest?' — showing the previous successful view.':'');$('status').className='error'}}finally{if(number===requestNumber)$('refresh').disabled=false}
 }
 (function restore(){try{const p=new URLSearchParams(location.search);if(RANGES[p.get('range')])$('range').value=p.get('range');const who=p.get('who');if(who){$('user').append(new Option(who,who));$('user').value=who}}catch{}})();
